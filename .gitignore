@@ -99,3 +99,4 @@ ENV/
 
 # mypy
 .mypy_cache/
+data/imdb_40_128_V1.mat
