@@ -55,5 +55,6 @@ class DnCNN(object):
 		self.sess.run(tf.global_variables_initializer())
 
 		return 0
+		
 	def validate(self, sess, opt)
 		return
