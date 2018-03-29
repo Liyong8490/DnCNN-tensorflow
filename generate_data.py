@@ -5,6 +5,7 @@ import h5py
 import PIL.Image as Image
 import numpy as np
 import scipy.io as sio
+import tensorflow as tf
 
 def data_augmentation(label, mode=0):
 
@@ -55,7 +56,8 @@ data_path = 'Train400'
 out_dir = 'data/'
 batchSize = 128
 patchsize = 40
-filename = 'imdb_'+str(patchsize)+'_'+str(batchSize)+'_V1.mat'
+# filename = 'imdb_'+str(patchsize)+'_'+str(batchSize)+'_V1.mat'
+tfrecords_filename = 'imdb_'+str(patchsize)+'_'+str(batchSize)+'_V1.tfrecords'
 stride = 10
 count = 0
 ext = '*.png'
@@ -107,5 +109,9 @@ for i in range(len(data)):
 print(sub_label_sequence.shape)
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
-sio.savemat(out_dir + filename, {'inputs':sub_label_sequence})
+writer = tf.python_io.TFRecordWriter(tfrecords_filename)
+inputs = tf.train.Example(features=tf.train.Features(feature={'inputs': sub_label_sequence}))
+writer.write(inputs.SerializeToString())
+writer.close()
+# sio.savemat(out_dir + filename, {'inputs':sub_label_sequence})
 

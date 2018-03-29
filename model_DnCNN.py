@@ -1,5 +1,6 @@
 import os
 import globle
+import scipy.io as sio
 import numpy as np
 import tensorflow as tf
 
@@ -38,6 +39,7 @@ class DnCNN(object):
 		weight_decay = opt.weight_decay
 		trainsetpath = opt.trainsetpath
 		sigma = opt.sigma
+
 		# build network(s)
 		self.inputs = tf.placeholder(tf.float32, [None, self.imsize, self.imsize, self.c_dim], name='inputs')
     	self.labels = tf.placeholder(tf.float32, [None, self.imsize, self.imsize, self.c_dim], name='inputs')
@@ -50,7 +52,8 @@ class DnCNN(object):
         with tf.control_dependencies(update_ops):
             self.train_op = optimizer.minimize(self.loss)
 		# load data
-
+		odata = sio.loadmat(trainsetpath)
+		train_data = np.transpose(odata['inputs'], [3, 0, 1, 2])
 		# train and record loss
 		self.sess.run(tf.global_variables_initializer())
 
