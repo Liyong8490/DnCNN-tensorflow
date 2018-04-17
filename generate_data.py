@@ -109,7 +109,7 @@ for i in range(len(data)):
 print(sub_label_sequence.shape)
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
-writer = tf.python_io.TFRecordWriter(tfrecords_filename)
+writer = tf.python_io.TFRecordWriter(out_dir + tfrecords_filename)
 inputs = tf.train.Example(features=tf.train.Features(feature={'inputs': sub_label_sequence}))
 writer.write(inputs.SerializeToString())
 writer.close()
