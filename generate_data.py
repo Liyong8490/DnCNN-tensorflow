@@ -80,7 +80,8 @@ for i in range(len(data)):
 print(count)
 TotalNum = batchSize*(count//batchSize if count//batchSize==0 else count//batchSize + 1)
 print(TotalNum)
-sub_label_sequence = np.zeros([patchsize,patchsize,1,TotalNum], dtype=np.float32)
+sub_label_sequence = np.zeros([patchsize,patchsize,1,TotalNum], dtype=np.uint8)
+# sub_label_sequence = []
 count = 0
 for i in range(len(data)):
     print(i)
@@ -90,7 +91,7 @@ for i in range(len(data)):
         img = img.resize(newsize, resample=PIL.Image.BICUBIC)
         label_ = np.array(img, dtype='uint8')
         image_aug = data_augmentation(label_, 0).astype(np.float32)
-        label_ = image_aug / 255.0
+        # label_ = image_aug / 255.0
         # label_patches = Im2Patch(label_, patchsize, stride=stride)
         h = label_.shape[0]
         w = label_.shape[1]
@@ -100,6 +101,7 @@ for i in range(len(data)):
                 size_p = p.shape
                 sub_label_sequence[0:size_p[0], 0:size_p[1], :, count:count + 1] = np.reshape(p,
                                            [size_p[0], size_p[1], 1, 1])
+                # sub_label_sequence.append(np.reshape(p, [size_p[0], size_p[1], 1]).astype(np.float32))
                 count = count + 1
 
         # if i == 0:
@@ -110,8 +112,17 @@ print(sub_label_sequence.shape)
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 writer = tf.python_io.TFRecordWriter(out_dir + tfrecords_filename)
-inputs = tf.train.Example(features=tf.train.Features(feature={'inputs': sub_label_sequence}))
-writer.write(inputs.SerializeToString())
+# inputs = tf.train.Example(features=tf.train.Features(
+#         feature={'inputs': tf.train.Feature(float_list=tf.train.FloatList(value=sub_label_sequence))}))
+# writer.write(inputs.SerializeToString())
+
+# for img in sub_label_sequence:
+for ind in range(sub_label_sequence.shape[3]):
+    img_raw = np.reshape(sub_label_sequence[:, :, :, ind], [patchsize, patchsize, 1]).tobytes()
+    inputs = tf.train.Example(features=tf.train.Features(
+        feature={'inputs': tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_raw]))}))
+    writer.write(inputs.SerializeToString())
+
 writer.close()
 # sio.savemat(out_dir + filename, {'inputs':sub_label_sequence})
 
