@@ -45,7 +45,7 @@ class DnCNN(object):
 
         # build network(s)
         self.inputs = tf.placeholder(tf.float32, [None, self.imsize, self.imsize, self.c_dim], name='inputs')
-        self.labels = tf.placeholder(tf.float32, [None, self.imsize, self.imsize, self.c_dim], name='inputs')
+        self.labels = tf.placeholder(tf.float32, [None, self.imsize, self.imsize, self.c_dim], name='labels')
 
         self.results = self.__build_model()
         self.lr = tf.placeholder(tf.float32, name='learning_rate') # to add decay
