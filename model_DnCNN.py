@@ -3,6 +3,7 @@ import time
 import scipy.io as sio
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
 from utils import data_aug
 
 class DnCNN(object):
@@ -54,37 +55,84 @@ class DnCNN(object):
         with tf.control_dependencies(update_ops):
             self.train_op = self.optimizer.minimize(self.loss)
         # load data
-        filename_queue = tf.train.string_input_producer([train_path])
-        reader = tf.TFRecordReader()
-        _, serialized_examples = reader.read(filename_queue)
-        tf_features = tf.parse_single_example(serialized_examples, features={'inputs': tf.FixedLenFeature([], tf.string)})
-        inputs_raw = tf_features['inputs']
-        inputs = tf.decode_raw(inputs_raw, tf.uint8)
-        inputs_batch = tf.train.shuffle_batch(inputs, batch_size, capacity=5000, min_after_dequeue=1000, num_threads=4)
+
+        if not os.path.exists(train_path):
+            print("File: \"%s\" not found." % train_path)
+            exit()
+        # read train dataset from tfrecord
+        def datamap(record):
+            keys_to_feature = {
+                'inputs': tf.FixedLenFeature([], tf.string),
+            }
+            tf_features = tf.parse_single_example(record,features=keys_to_feature)
+            inputs = tf.decode_raw(tf_features['inputs'], tf.uint8)
+            inputs = tf.reshape(inputs, [patch_size, patch_size])
+            return inputs
+
+        # filename_queue = tf.train.string_input_producer([train_path])
+        # reader = tf.TFRecordReader()
+        # _, serialized_examples = reader.read(filename_queue)
+        # tf_features = tf.parse_single_example(serialized_examples,
+        #                                       features={'inputs': tf.FixedLenFeature([], tf.string)
+        #                                                 })
+        # inputs = tf.decode_raw(tf_features['inputs'], tf.uint8)
+        # inputs = tf.reshape(inputs, [patch_size, patch_size])
+        # inputs_batch = tf.train.shuffle_batch([inputs], batch_size, capacity=5000, min_after_dequeue=1000, num_threads=4)
         # train and record loss
         self.sess.run(tf.global_variables_initializer())
         tf.train.start_queue_runners(sess=self.sess)
-        start_time = time.time()
+        losses = []
+        losses_aver = []
         for epoch in range(1, nEpoch+1):
-            inputs_val = self.sess.run(inputs_batch)
-            mini_batch = np.array(inputs_val, dtype=np.float32)
-            rnd_aug = np.random.randint(8,size=mini_batch.shape[0])
-            for i in range(mini_batch.shape[0]):
-                mini_batch[i,:,:,:] = np.reshape(data_aug(
-                    np.reshape(mini_batch[i,:,:,:], [patch_size,patch_size]),
-                    rnd_aug[i]),[1, 1, patch_size, patch_size])
-            label_b = sigma / 255.0 * np.random.normal(size=np.shape(mini_batch))
-            input_b = mini_batch + label_b
-            _, loss = self.sess.run([self.optimizer, self.loss], feed_dict={self.inputs:input_b,
-                                   self.labels: label_b, self.is_training: True})
-            print('Epoch: [%2d] Time: %4.2 Loss: %.6f\n',epoch, time.time() - start_time, loss)
-            if epoch%lr_decay == 0:
-                saver = tf.train.Saver()
-                checkpoint = opt.checkpoint_path
-                if not os.path.exists(checkpoint):
-                    os.mkdir(checkpoint)
-                print("[*] Saving model...")
-                saver.save(self.sess, os.path.join(checkpoint, opt.model_name), global_step=epoch)
+            dataset = tf.data.TFRecordDataset([train_path], num_parallel_reads=4)\
+                        .map(datamap, num_parallel_calls=batch_size)\
+                        .shuffle(buffer_size=batch_size*4*patch_size**2, seed=0, reshuffle_each_iteration=True)\
+                        .batch(batch_size)\
+                        .repeat(1)
+            iterator = dataset.make_one_shot_iterator()
+            inputs_batch = iterator.get_next()
+            step = 0
+            start_time = time.time()
+            total_loss = 0
+
+            try:
+                step = 0
+                while True:
+                    inputs_val = self.sess.run(inputs_batch)
+                    mini_batch = np.array(inputs_val, dtype=np.float32)
+                    mini_batch = np.reshape(mini_batch, [mini_batch.shape[0], patch_size, patch_size, 1])
+                    rnd_aug = np.random.randint(8,size=mini_batch.shape[0])
+                    for i in range(mini_batch.shape[0]):
+                        mini_batch[i,:,:] = np.reshape(data_aug(
+                            np.reshape(mini_batch[i,:,:,:], [patch_size,patch_size]),
+                            rnd_aug[i]),[1, patch_size, patch_size, 1])
+                    label_b = sigma / 255.0 * np.random.normal(size=np.shape(mini_batch))
+                    input_b = mini_batch / 255.0 + label_b
+                    if epoch < lr_decay:
+                        _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
+                                                self.inputs:input_b, self.labels: label_b,
+                                                self.lr:lr, self.is_training: True})
+                    else:
+                        _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
+                                                self.inputs:input_b, self.labels: label_b,
+                                                self.lr:lr/10, self.is_training: True})
+                    # print('iter: [%2d] Time: %4.2 Loss: %.6f\n' % (iter, time.time() - start_time, loss))
+                    total_loss = total_loss + loss
+                    step = step + 1
+                    if step%50 == 0:
+                        losses.append(loss)
+                        print("Epoch: [{}] Iterations: [{}] Time: {} Loss: {}".format(epoch, step, time.time() - start_time, loss))
+
+            except tf.errors.OutOfRangeError:
+                losses_aver.append(total_loss/step)
+                print('Done training for %d epochs, %d steps. Time: %f, AverLoss: %f' % (epoch, step, time.time() - start_time, total_loss/step))
+
+            saver = tf.train.Saver()
+            checkpoint = opt.checkpoint_path
+            if not os.path.exists(checkpoint):
+                os.mkdir(checkpoint)
+            print("[*] Saving model...{}".format(epoch))
+            saver.save(self.sess, os.path.join(checkpoint, opt.model_name), global_step=epoch)
 		
     def validate(self, sess, opt):
         return
