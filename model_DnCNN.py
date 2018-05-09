@@ -16,7 +16,7 @@ class DnCNN(object):
 
     def _build_model(self, lamb=0):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
-        results = self._build_dncnn_old(lamb=lamb, num_layers=17)
+        results = self._build_dncnn(lamb=lamb, num_layers=17)
         return results
 
     def _conv2d(self, input, filter_shape, strides=[1,1,1,1], padding='SAME', baise=True, name=None):
@@ -217,7 +217,7 @@ class DnCNN(object):
             psnr_summary.append(np.mean(psnr_aver))
             ssim_summary.append(np.mean(ssim_aver))
             print("model {}   PSNR={}   SSIM={}".format(epoch, np.mean(psnr_aver), np.mean(ssim_aver)))
-        sio.savemat('DnCNN_'+'Set12'+'_resArray.mat', {'psnr': np.array(psnr_summary), 'ssim':np.array(ssim_summary)})
+        sio.savemat('DnCNN_'+validate_set+'_validate.mat', {'psnr': np.array(psnr_summary), 'ssim':np.array(ssim_summary)})
 
     def validate(self, validate_set, test_datas, test_labels, test_names, epoch):
         # load validate data
