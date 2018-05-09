@@ -102,3 +102,6 @@ ENV/
 data/
 .idea/
 checkpoints/
+results_DnCNN/
+validate_DnCNN/
+tmp/

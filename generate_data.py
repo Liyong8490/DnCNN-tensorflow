@@ -90,7 +90,7 @@ for i in range(len(data)):
         newsize = (int(img.size[0] * scales[sc]), int(img.size[1] * scales[sc]))
         img = img.resize(newsize, resample=PIL.Image.BICUBIC)
         label_ = np.array(img, dtype='uint8')
-        image_aug = data_augmentation(label_, 0).astype(np.float32)
+        # image_aug = data_augmentation(label_, 0).astype(np.float32)
         # label_ = image_aug / 255.0
         # label_patches = Im2Patch(label_, patchsize, stride=stride)
         h = label_.shape[0]
@@ -118,10 +118,18 @@ writer = tf.python_io.TFRecordWriter(out_dir + tfrecords_filename)
 
 # for img in sub_label_sequence:
 for ind in range(sub_label_sequence.shape[3]):
-    img_raw = np.reshape(sub_label_sequence[:, :, :, ind], [patchsize, patchsize, 1]).tobytes()
+    img_raw = np.reshape(sub_label_sequence[:, :, :, ind], [patchsize, patchsize, 1]).tostring()
     inputs = tf.train.Example(features=tf.train.Features(
         feature={'inputs': tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_raw]))}))
     writer.write(inputs.SerializeToString())
+    # for i in range(patchsize):
+    #     for j in range(patchsize):
+    #         inputs = tf.train.Example(features=tf.train.Features(
+    #             feature={'inputs': tf.train.Feature(float_list=tf.train.FloatList(value=[img_raw[i,j,0]]))}))
+    #         writer.write(inputs.SerializeToString())
+    # inputs = tf.train.Example(features=tf.train.Features(
+    #     feature={'inputs': tf.train.Feature(float_list=tf.train.FloatList(value=[img_raw[:]]))}))
+    # writer.write(inputs.SerializeToString())
 
 writer.close()
 # sio.savemat(out_dir + filename, {'inputs':sub_label_sequence})
