@@ -20,7 +20,6 @@ parser.add_argument('--train-path', default='./data/imdb_40_128_V1.tfrecords', t
 parser.add_argument('--validate-dir', default='E:/denoising_data/_noisyset/', type=str, help='path to trainset')
 parser.add_argument('--validate-set', default='Set12', type=str, help='path to trainset')
 parser.add_argument('--model-name', default='DnCNN', type=str, help='path to checkpoints')
-#parser.add_argument('--checkpoint-path', default='./DnCNN_checkpoints/', type=str, help='path to checkpoints')
 
 opt = parser.parse_args()
 opt.checkpoint_path = './'+ opt.model_name + '_checkpoints/'
