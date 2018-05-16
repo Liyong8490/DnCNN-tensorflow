@@ -14,9 +14,9 @@ class DnCNN(object):
     def __init__(self):
         super(DnCNN, self).__init__()
 
-    def _build_model(self, lamb=0):
+    def _build_model(self, weight_decay=1e-6):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
-        results = self._build_dncnn(lamb=lamb, num_layers=17)
+        results = self._build_dncnn(num_layers=17, weight_decay=weight_decay)
         return results
 
     def _conv2d(self, input, filter_shape, strides=[1,1,1,1], padding='SAME', baise=True, name=None):
@@ -41,7 +41,7 @@ class DnCNN(object):
         #     out = tf.contrib.layers.batch_norm(conv, scale=True, is_training=self.is_training)
         return out
 
-    def _build_dncnn(self, lamb=0, num_layers=17):
+    def _build_dncnn_new(self, num_layers=17):
         fmsz = 64
         ksz = 3
         out = self._conv2d(self.inputs, [ksz, ksz, self.c_dim, fmsz], name='conv1')
@@ -51,29 +51,33 @@ class DnCNN(object):
         results = self._conv2d(out, [ksz, ksz, fmsz, self.c_dim], name='results')
         return results
 
-    def _build_dncnn_old(self, lamb=0, num_layers=17):
+    def _build_dncnn(self, num_layers=17, weight_decay=1e-6):
         kernelsize = (3,3)
         featuremap = 64
         weight_initial = (2 / (9.0 * featuremap)) ** 0.5
         with tf.variable_scope('conv1') as scope:
             out = tf.layers.conv2d(self.inputs, featuremap, kernelsize, padding='SAME', activation=tf.nn.relu,
-                                   use_bias=True, kernel_initializer=tf.truncated_normal_initializer(stddev=weight_initial))
-            # tf.add_to_collection('loss', tf.contrib.layers.l2_regularizer(lamb)(out.weight))
+                                   use_bias=True, kernel_initializer=tf.truncated_normal_initializer(stddev=weight_initial),
+                                   kernel_regularizer=tf.contrib.layers.l2_regularizer(weight_decay))
         for i in range(2, num_layers):
             with tf.variable_scope('conv%d' %i) as scope:
                 conv = tf.layers.conv2d(out, featuremap, kernelsize, padding='SAME', name='conv%d'%i,
-                                        use_bias=False, kernel_initializer=tf.truncated_normal_initializer(stddev=weight_initial))
-                out = tf.nn.relu(tf.contrib.layers.batch_norm(conv, scale=True, is_training=self.is_training))
+                                        use_bias=False, kernel_initializer=tf.truncated_normal_initializer(stddev=weight_initial),
+                                        kernel_regularizer=tf.contrib.layers.l2_regularizer(weight_decay))
+                # out = tf.nn.relu(tf.contrib.layers.batch_norm(conv, scale=True, is_training=self.is_training))
+                out = tf.nn.relu(tf.layers.batch_normalization(conv, training=self.is_training))
                 # out = tf.layers.conv2d(out, featuremap, kernelsize, padding='SAME', name='conv%d'%i, activation=tf.nn.relu,\
                 #                        use_bias=True, kernel_initializer=tf.truncated_normal_initializer(stddev=weight_initial))
         with tf.variable_scope('conv%d'%num_layers) as scope:
             results = tf.layers.conv2d(out, self.c_dim, kernelsize, padding='SAME',
-                                       use_bias=True, kernel_initializer=tf.truncated_normal_initializer(stddev=weight_initial))
+                                       use_bias=True, kernel_initializer=tf.truncated_normal_initializer(stddev=weight_initial),
+                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(weight_decay))
         return results
 
     def train(self, sess, opt):
         # set hyper-parameters
         self.sess = sess
+        model_name = opt.model_name
         patch_size = opt.patch_size
         batch_size = opt.batch_size
         nEpoch = opt.epochs
@@ -87,7 +91,7 @@ class DnCNN(object):
         self.inputs = tf.placeholder(tf.float32, [None, None, None, self.c_dim], name='inputs')
         self.labels = tf.placeholder(tf.float32, [None, None, None, self.c_dim], name='labels')
 
-        self.results = self._build_model(lamb=weight_decay)
+        self.results = self._build_model(weight_decay)
         self.lr = tf.placeholder(tf.float32, name='learning_rate') # to add decay
         # self.loss = (0.5 / batch_size) * tf.nn.l2_loss(self.results - self.labels)
         self.loss = (0.5 / batch_size) * tf.reduce_sum(tf.square(self.results - self.labels))
@@ -110,16 +114,6 @@ class DnCNN(object):
             inputs = tf.reshape(inputs, [patch_size, patch_size])
             return inputs
 
-        # filename_queue = tf.train.string_input_producer([train_path])
-        # reader = tf.TFRecordReader()
-        # _, serialized_examples = reader.read(filename_queue)
-        # tf_features = tf.parse_single_example(serialized_examples,
-        #                                       features={'inputs': tf.FixedLenFeature([], tf.string)
-        #                                                 })
-        # inputs = tf.decode_raw(tf_features['inputs'], tf.uint8)
-        # inputs = tf.reshape(inputs, [patch_size, patch_size])
-        # inputs_batch = tf.train.shuffle_batch([inputs], batch_size, capacity=5000, min_after_dequeue=1000, num_threads=4)
-        # train and record loss
         self.sess.run(tf.global_variables_initializer())
         tf.train.start_queue_runners(sess=self.sess)
         losses = []
@@ -187,20 +181,24 @@ class DnCNN(object):
 
                     if flag:
                         for ind in range(batch_size):
-                            scipy.misc.imsave('./tmp/'+str(ind)+'_in.png', np.squeeze(input_b[ind,:,:,0]))
-                            scipy.misc.imsave('./tmp/'+str(ind)+'_resi_l.png', np.squeeze(label_b[ind,:,:,0]))
-                            scipy.misc.imsave('./tmp/'+str(ind)+'_resi.png', np.squeeze(result[ind,:,:,0]))
-                            scipy.misc.imsave('./tmp/'+str(ind)+'_label.png', (np.squeeze(input_b[ind,:,:,0]) - np.squeeze(label_b[ind,:,:,0])))
+                            tmppath = './tmp/'
+                            if not os.path.exists(tmppath):
+                                os.mkdir(tmppath)
+                            scipy.misc.imsave(tmppath+str(ind)+'_in.png', np.squeeze(input_b[ind,:,:,0]))
+                            scipy.misc.imsave(tmppath+str(ind)+'_resi_l.png', np.squeeze(label_b[ind,:,:,0]))
+                            scipy.misc.imsave(tmppath+str(ind)+'_resi.png', np.squeeze(result[ind,:,:,0]))
+                            scipy.misc.imsave(tmppath+str(ind)+'_label.png', (np.squeeze(input_b[ind,:,:,0]) - np.squeeze(label_b[ind,:,:,0])))
                             res = np.squeeze(input_b[ind,:,:,0]) - np.squeeze(result[ind,:,:,0])
                             res[res < 0] = 0
                             res[res > 1.] = 1.
-                            scipy.misc.imsave('./tmp/'+str(ind)+'.png', (res))
+                            scipy.misc.imsave(tmppath+str(ind)+'.png', (res))
                             flag = False
                     # print('iter: [%2d] Time: %4.2 Loss: %.6f\n' % (iter, time.time() - start_time, loss))
                     total_loss = total_loss + loss
                     step = step + 1
-                    if step%50 == 0:
+                    if step%500 == 0:
                         flag = True
+                    if step%50 == 0:
                         losses.append(loss)
                         print("Epoch: [{}] Iterations: [{}] Time: {} Loss: {}".format(epoch, step, time.time() - start_time, loss))
 
@@ -213,15 +211,15 @@ class DnCNN(object):
                 os.mkdir(checkpoint)
             print("[*] Saving model...{}".format(epoch))
             saver.save(self.sess, os.path.join(checkpoint, opt.model_name), global_step=epoch)
-            psnr_aver, ssim_aver = self.validate(validate_set, test_datas, test_labels, test_names,epoch)
+            psnr_aver, ssim_aver = self.validate(validate_set, test_datas, test_labels, test_names,epoch, model_name)
             psnr_summary.append(np.mean(psnr_aver))
             ssim_summary.append(np.mean(ssim_aver))
             print("model {}   PSNR={}   SSIM={}".format(epoch, np.mean(psnr_aver), np.mean(ssim_aver)))
-        sio.savemat('DnCNN_'+validate_set+'_validate.mat', {'psnr': np.array(psnr_summary), 'ssim':np.array(ssim_summary)})
+        sio.savemat(model_name + '_'+validate_set+'_validate.mat', {'psnr': np.array(psnr_summary), 'ssim':np.array(ssim_summary)})
 
-    def validate(self, validate_set, test_datas, test_labels, test_names, epoch):
+    def validate(self, validate_set, test_datas, test_labels, test_names, epoch, model_name):
         # load validate data
-        out_path = './validate_DnCNN/'+validate_set+'/'+str(epoch)
+        out_path = './validate_'+ model_name +'/'+validate_set+'/'+str(epoch)
         if not os.path.exists(out_path):
             os.makedirs(out_path)
         psnr_aver = []
